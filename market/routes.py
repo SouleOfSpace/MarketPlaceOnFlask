@@ -1,8 +1,13 @@
-from market import app, db
+from market import app, db, stripe_keys
 from market.models import Item, User
-from flask import render_template, redirect, url_for, flash, request
-from market.forms import RegisterForm, LoginForm, PurchaseItemForm, SellItemForm
+from flask import render_template, redirect, url_for, flash, request, jsonify
+from market.forms import RegisterForm, LoginForm, PurchaseItemForm, SellItemForm, CreateItemForm, DeleteITemForm
 from flask_login import login_user, logout_user, login_required, current_user
+
+from flask_ssl import *
+
+import stripe
+
 
 @app.route('/')
 @app.route('/home')
@@ -93,3 +98,47 @@ def logout_page():
     logout_user()
     flash(f'You have been logged out', category='info')
     return redirect(url_for('home_page'))
+
+
+@login_required
+@app.route('/profile/<string:username>/<int:user_id>', methods=["GET", "POST"])
+def profile_page(username, user_id):
+    items_owned = Item.query.filter_by(owner=current_user.id)
+    form_create_item = CreateItemForm()
+    form_delete_item = DeleteITemForm()
+
+    #Create new Item
+    if request.method == "POST":
+        if form_create_item.validate_on_submit():
+            try:
+                item_to_create = Item(name=form_create_item.name.data,
+                                      price=form_create_item.price.data,
+                                      barcode=form_create_item.barcode.data,
+                                      description=form_create_item.description.data,
+                                      owner=current_user.id)
+                db.session.add(item_to_create)
+                db.session.commit()
+
+                flash(f'New item is created successfully', category='success')
+                return redirect(url_for('market_page'))
+            except:
+                flash(f'Something went wrong by trying to create new item ! Please try again!', category='danger')
+
+
+        deleted_item = request.form.get('deleted_item')
+        d_item_object = Item.query.filter_by(name=deleted_item).first()
+
+        if d_item_object:
+            try:
+                db.session.delete(d_item_object)
+                db.session.commit()
+
+                flash(f'Item "{d_item_object.name}" is deleted successfully', category='success')
+                return redirect(url_for('market_page'))
+            except:
+                flash(f'Something went wrong by trying to delete item! Please try again!', category='danger')
+
+    return render_template('flask/profile.html',
+                           form_create_item=form_create_item,
+                           items_owned=items_owned,
+                           form_delete_item=form_delete_item)
